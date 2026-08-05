@@ -1,0 +1,5 @@
+/target
+# Don't commit real certificates
+certs/device.cert.pem
+certs/device.key.pem
+certs/AmazonRootCA1.pem

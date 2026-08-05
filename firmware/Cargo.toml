@@ -1,0 +1,43 @@
+[package]
+name = "doorbell-sms"
+version = "0.1.0"
+authors = ["Dylan Stewart <jdylanstewart@gmail.com>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# ESP32-C3 HAL
+esp-hal = { version = "1.0.0-beta.1", features = ["esp32c3", "unstable"] }
+esp-wifi = { version = "0.15.1", features = ["esp32c3", "wifi", "esp-alloc", "log-04"] }
+esp-alloc = { version = "0.8.0" }
+esp-backtrace = { version = "0.16.0", features = ["esp32c3", "exception-handler", "panic-handler", "println"] }
+esp-hal-embassy = { version = "0.8.1", features = ["esp32c3"] }
+esp-println = { version = "0.14.0", features = ["esp32c3", "log-04"] }
+esp-bootloader-esp-idf = "0.1.0"
+
+# Embassy async runtime
+embassy-executor = { version = "0.7.0", features = ["task-arena-size-20480"] }
+embassy-net = { version = "0.7.0", features = ["tcp", "udp", "dhcpv4", "medium-ethernet", "dns", "log"] }
+embassy-time = "0.5.0"
+
+# MQTT
+rust-mqtt = { version = "0.3.0", default-features = false }
+
+# Embedded utilities
+embedded-hal-async = "1.0.0"
+heapless = "0.8.0"
+static_cell = { version = "2.0", features = ["nightly"] }
+log = "0.4.27"
+
+# JSON parsing (no_std)
+serde = { version = "1.0", default-features = false, features = ["derive"] }
+serde-json-core = "0.6"
+
+[profile.dev]
+opt-level = "s"
+
+[profile.release]
+codegen-units = 1
+debug = true
+lto = true
+opt-level = "s"

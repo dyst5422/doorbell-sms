@@ -1,0 +1,14 @@
+[target.riscv32imc-unknown-none-elf]
+runner = "espflash flash --monitor"
+rustflags = ["-C", "link-arg=-Tlinkall.x"]
+
+[build]
+target = "riscv32imc-unknown-none-elf"
+
+[unstable]
+build-std = ["alloc", "core"]
+
+[env]
+ESP_LOG = "info"
+SSID = "YOUR_WIFI_SSID"
+PASSWORD = "YOUR_WIFI_PASSWORD"

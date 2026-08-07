@@ -119,7 +119,8 @@ async fn main(spawner: Spawner) -> ! {
 
     // Run MQTT workflow (shadow check → mode logic → publish)
     info!("[main] Starting MQTT workflow...");
-    let _ = mqtt::mqtt_workflow(stack, &mut relay_pin).await;
+    let rng_seed = (rng.random() as u64) << 32 | rng.random() as u64;
+    let _ = mqtt::mqtt_workflow(stack, &mut relay_pin, rng_seed).await;
 
     // Done — enter deep sleep until next doorbell press
     info!("[main] Work complete, entering deep sleep...");

@@ -7,31 +7,32 @@ license = "MIT OR Apache-2.0"
 
 [dependencies]
 # ESP32-C3 HAL
-esp-hal = { version = "1.0.0-beta.1", features = ["esp32c3", "unstable"] }
-esp-wifi = { version = "0.15.1", features = ["esp32c3", "wifi", "esp-alloc", "log-04"] }
-esp-alloc = { version = "0.8.0" }
-esp-backtrace = { version = "0.16.0", features = ["esp32c3", "exception-handler", "panic-handler", "println"] }
-esp-hal-embassy = { version = "0.8.1", features = ["esp32c3"] }
-esp-println = { version = "0.14.0", features = ["esp32c3", "log-04"] }
-esp-bootloader-esp-idf = "0.1.0"
+esp-hal = { version = "=1.0.0-rc.0", features = ["esp32c3", "unstable"] }
+esp-wifi = { version = "=0.15.0", features = ["esp32c3", "wifi", "esp-alloc", "log-04", "builtin-scheduler"] }
+esp-alloc = "0.8"
+esp-backtrace = { version = "0.16", features = ["esp32c3", "exception-handler", "panic-handler", "println"] }
+esp-hal-embassy = { version = "0.8", features = ["esp32c3"] }
+esp-println = { version = "0.14", features = ["esp32c3", "log-04"] }
+esp-bootloader-esp-idf = "0.1"
 
 # Embassy async runtime
-embassy-executor = { version = "0.7.0", features = ["task-arena-size-20480"] }
-embassy-net = { version = "0.7.0", features = ["tcp", "udp", "dhcpv4", "medium-ethernet", "dns", "log"] }
-embassy-time = "0.5.0"
+embassy-executor = { version = "0.7", features = ["task-arena-size-20480"] }
+embassy-net = { version = "0.7", features = ["tcp", "udp", "dhcpv4", "medium-ethernet", "dns", "log"] }
+embassy-time = "0.5"
 
 # MQTT
-rust-mqtt = { version = "0.3.0", default-features = false }
+rust-mqtt = { version = "0.3", default-features = false }
+
+# TLS (pure Rust, no C deps, works with embedded-io-async)
+embedded-tls = { version = "0.17", default-features = false, features = ["alloc"] }
+rand_core = "0.6"
 
 # Embedded utilities
-embedded-hal-async = "1.0.0"
-heapless = "0.8.0"
+embedded-hal-async = "1.0"
+embedded-io-async = "0.6"
+heapless = "0.8"
 static_cell = { version = "2.0", features = ["nightly"] }
-log = "0.4.27"
-
-# JSON parsing (no_std)
-serde = { version = "1.0", default-features = false, features = ["derive"] }
-serde-json-core = "0.6"
+log = "0.4"
 
 [profile.dev]
 opt-level = "s"

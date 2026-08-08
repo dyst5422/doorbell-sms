@@ -65,6 +65,11 @@ async fn main(spawner: Spawner) {
     esp_println::logger::init_logger(log::LevelFilter::Info);
     info!("[main] Doorbell firmware starting...");
 
+    // Startup delay: gives USB time to enumerate for flashing/monitoring
+    for _ in 0..5_000_000 {
+        unsafe { core::arch::asm!("nop") };
+    }
+
     // Log reset and wakeup reason
     let reason = reset_reason(Cpu::ProCpu);
     let wake = wakeup_cause();

@@ -10,5 +10,8 @@ build-std = ["alloc", "core"]
 
 [env]
 ESP_LOG = "info"
-SSID = "YOUR_WIFI_SSID"
-PASSWORD = "YOUR_WIFI_PASSWORD"
+WIFI_SSID = "5962 S Tempe Way"
+WIFI_PASS = "kbds5962"
+CURRENT_TIME_MS = "1723070000000"
+CC = "/opt/homebrew/opt/llvm/bin/clang"
+CXX = "/opt/homebrew/opt/llvm/bin/clang++"

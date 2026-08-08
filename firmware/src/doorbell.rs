@@ -1,5 +1,5 @@
 use embassy_time::{Duration, Timer};
-use esp_hal::gpio::{Level, Output};
+use esp_hal::gpio::Output;
 use log::info;
 
 use crate::config::RELAY_PULSE_MS;

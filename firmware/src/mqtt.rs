@@ -2,33 +2,40 @@ use embassy_net::{dns::DnsQueryType, tcp::TcpSocket, Stack};
 use embassy_time::Duration;
 use log::{error, info};
 
-use rust_mqtt::{
-    client::{client::MqttClient, client_config::ClientConfig},
-    packet::v5::publish_packet::QualityOfService,
-    utils::rng_generator::CountingRng,
+use mbedtls_rs::{
+    Certificate, ClientSessionConfig, Credentials, PrivateKey, Session, SessionConfig, Tls,
+    X509,
 };
 
-use embedded_tls::{Aes128GcmSha256, Certificate, TlsConfig, TlsConnection, TlsContext, NoVerify};
+use rust_mqtt::{
+    buffer::BumpBuffer,
+    client::{
+        Client,
+        event::Event,
+        options::{ConnectOptions, PublicationOptions, SubscriptionOptions, TopicReference},
+    },
+    types::{MqttString, TopicName},
+};
 
 use crate::config::{
-    AWS_IOT_ENDPOINT, AWS_IOT_PORT, CA_CERT, DEVICE_CERT, DEVICE_KEY, MQTT_CLIENT_ID, TOPIC_RING,
-    TOPIC_SHADOW_GET, TOPIC_SHADOW_GET_ACCEPTED, TOPIC_SHADOW_UPDATE,
+    AWS_IOT_ENDPOINT, AWS_IOT_ENDPOINT_CSTR, AWS_IOT_PORT, CA_CERT, DEVICE_CERT, DEVICE_KEY,
+    MQTT_CLIENT_ID, TOPIC_RING, TOPIC_SHADOW_GET, TOPIC_SHADOW_GET_ACCEPTED, TOPIC_SHADOW_UPDATE,
 };
 use crate::doorbell;
 use crate::shadow::{self, Mode};
 
 /// Performs the full MQTT-over-TLS workflow:
 /// 1. TCP connect to AWS IoT Core (port 8883)
-/// 2. TLS 1.3 handshake with mutual certificate authentication
+/// 2. TLS handshake with mutual certificate authentication via mbedtls
 /// 3. MQTT connect
 /// 4. Get Device Shadow (determine mode)
 /// 5. Execute mode logic
 /// 6. Publish ring event if needed
 /// 7. Update reported shadow state
 pub async fn mqtt_workflow(
+    tls: &mut Tls<'_>,
     stack: Stack<'static>,
     relay_pin: &mut esp_hal::gpio::Output<'_>,
-    rng_seed: u64,
 ) -> Result<(), ()> {
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
@@ -59,61 +66,44 @@ pub async fn mqtt_workflow(
     }
     info!("[mqtt] TCP connected");
 
-    // TLS handshake with mutual authentication
+    // TLS handshake with mutual authentication via mbedtls-rs
     info!("[mqtt] Starting TLS handshake...");
 
-    let mut read_record_buffer = [0u8; 16640];
-    let mut write_record_buffer = [0u8; 16640];
+    let client_conf = ClientSessionConfig {
+        ca_chain: Some(Certificate::new(X509::PEM(CA_CERT)).unwrap()),
+        server_name: Some(AWS_IOT_ENDPOINT_CSTR),
+        creds: Some(Credentials {
+            certificate: Certificate::new(X509::PEM(DEVICE_CERT)).unwrap(),
+            private_key: PrivateKey::new(X509::PEM(DEVICE_KEY), None).unwrap(),
+        }),
+        ..ClientSessionConfig::new()
+    };
 
-    let tls_config = TlsConfig::new()
-        .with_server_name(AWS_IOT_ENDPOINT)
-        .with_cert(Certificate::X509(DEVICE_CERT))
-        .enable_rsa_signatures();
-
-    let mut tls: TlsConnection<'_, _, Aes128GcmSha256> = TlsConnection::new(
-        socket,
-        &mut read_record_buffer,
-        &mut write_record_buffer,
-    );
-
-    let mut rng_impl = ChaChaRng(rng_seed);
-
-    tls.open::<_, NoVerify>(TlsContext::new(
-        &tls_config,
-        &mut rng_impl,
-    ))
-    .await
-    .map_err(|e| {
-        error!("[mqtt] TLS handshake failed: {:?}", e);
-    })?;
+    let mut session = Session::new(tls.reference(), socket, &SessionConfig::Client(client_conf))
+        .map_err(|e| {
+            error!("[mqtt] TLS session creation failed: {:?}", e);
+        })?;
 
     info!("[mqtt] TLS handshake complete");
 
-    // MQTT client setup over TLS connection
-    let mut config = ClientConfig::new(
-        rust_mqtt::client::client_config::MqttVersion::MQTTv5,
-        CountingRng(rng_seed),
-    );
-    config.add_max_subscribe_qos(QualityOfService::QoS1);
-    config.add_client_id(MQTT_CLIENT_ID);
-    config.max_packet_size = 256;
+    // MQTT client setup over TLS connection using BumpBuffer
+    let mut mqtt_buffer = [0u8; 1024];
+    let mut buffer = BumpBuffer::new(&mut mqtt_buffer);
 
-    let mut recv_buffer = [0; 256];
-    let mut write_buffer = [0; 256];
-
-    let mut client = MqttClient::<_, 5, _>::new(
-        tls,
-        &mut write_buffer,
-        256,
-        &mut recv_buffer,
-        256,
-        config,
-    );
+    let mut client = Client::<_, _, 1, 1, 1, 1>::new(&mut buffer);
 
     // Connect to MQTT broker
     info!("[mqtt] Connecting to MQTT broker...");
-    match client.connect_to_broker().await {
-        Ok(()) => info!("[mqtt] MQTT connected"),
+    let client_id = MqttString::try_from(MQTT_CLIENT_ID).unwrap();
+    match client
+        .connect(
+            &mut session,
+            &ConnectOptions::new().clean_start(),
+            Some(client_id),
+        )
+        .await
+    {
+        Ok(_) => info!("[mqtt] MQTT connected"),
         Err(e) => {
             error!("[mqtt] MQTT connect failed: {:?}", e);
             return Err(());
@@ -122,30 +112,56 @@ pub async fn mqtt_workflow(
 
     // Subscribe to shadow get/accepted
     info!("[mqtt] Subscribing to shadow topic...");
-    match client.subscribe_to_topic(TOPIC_SHADOW_GET_ACCEPTED).await {
-        Ok(()) => {}
+    let shadow_topic = TopicName::new(MqttString::try_from(TOPIC_SHADOW_GET_ACCEPTED).unwrap()).unwrap();
+    match client
+        .subscribe(shadow_topic.clone().into(), SubscriptionOptions::new().at_least_once())
+        .await
+    {
+        Ok(_) => {}
         Err(e) => {
             error!("[mqtt] Subscribe failed: {:?}", e);
             return Err(());
         }
     }
 
-    // Request shadow
+    // Wait for SUBACK
+    match client.poll().await {
+        Ok(Event::Suback(_)) => info!("[mqtt] Subscribed to shadow topic"),
+        Ok(e) => {
+            error!("[mqtt] Unexpected event after subscribe: {:?}", e);
+            return Err(());
+        }
+        Err(e) => {
+            error!("[mqtt] Poll after subscribe failed: {:?}", e);
+            return Err(());
+        }
+    }
+
+    // Publish to request shadow
     info!("[mqtt] Requesting device shadow...");
+    let shadow_get_topic = TopicName::new(MqttString::try_from(TOPIC_SHADOW_GET).unwrap()).unwrap();
+    let pub_options = PublicationOptions::new(TopicReference::Name(shadow_get_topic));
     match client
-        .send_message(TOPIC_SHADOW_GET, b"", QualityOfService::QoS1, false)
+        .publish(&pub_options, rust_mqtt::Bytes::from(&b""[..]))
         .await
     {
-        Ok(()) => {}
+        Ok(_) => {}
         Err(e) => {
             error!("[mqtt] Shadow get publish failed: {:?}", e);
             return Err(());
         }
     }
 
-    // Wait for shadow response
-    let mode = match client.receive_message().await {
-        Ok((_, payload)) => shadow::parse_mode_from_shadow(payload),
+    // Wait for shadow response (incoming PUBLISH)
+    let mode = match client.poll().await {
+        Ok(Event::Publish(publish)) => {
+            let payload = publish.message.as_ref();
+            shadow::parse_mode_from_shadow(payload)
+        }
+        Ok(e) => {
+            error!("[mqtt] Expected publish but got: {:?}", e);
+            Mode::Sms
+        }
         Err(e) => {
             error!("[mqtt] Failed to receive shadow: {:?}", e);
             Mode::Sms // Default to SMS if we can't read shadow
@@ -159,14 +175,16 @@ pub async fn mqtt_workflow(
 
     // Publish ring event if mode requires it
     if should_publish {
-        let timestamp = 0u64; // TODO: Get actual timestamp
+        let timestamp = 0u64; // TODO: Get actual timestamp from RTC
         let payload = doorbell::build_ring_payload(timestamp);
         info!("[mqtt] Publishing ring event...");
+        let ring_topic = TopicName::new(MqttString::try_from(TOPIC_RING).unwrap()).unwrap();
+        let pub_options = PublicationOptions::new(TopicReference::Name(ring_topic)).at_least_once();
         match client
-            .send_message(TOPIC_RING, payload.as_bytes(), QualityOfService::QoS1, false)
+            .publish(&pub_options, rust_mqtt::Bytes::from(payload.as_bytes()))
             .await
         {
-            Ok(()) => info!("[mqtt] Ring event published!"),
+            Ok(_) => info!("[mqtt] Ring event published!"),
             Err(e) => error!("[mqtt] Publish failed: {:?}", e),
         }
     }
@@ -174,46 +192,20 @@ pub async fn mqtt_workflow(
     // Update reported shadow state
     let reported = shadow::build_reported_state(mode, 0);
     info!("[mqtt] Updating reported shadow...");
+    let shadow_update_topic = TopicName::new(MqttString::try_from(TOPIC_SHADOW_UPDATE).unwrap()).unwrap();
+    let pub_options = PublicationOptions::new(TopicReference::Name(shadow_update_topic));
     match client
-        .send_message(TOPIC_SHADOW_UPDATE, reported.as_bytes(), QualityOfService::QoS1, false)
+        .publish(&pub_options, rust_mqtt::Bytes::from(reported.as_bytes()))
         .await
     {
-        Ok(()) => info!("[mqtt] Shadow updated"),
+        Ok(_) => info!("[mqtt] Shadow updated"),
         Err(e) => error!("[mqtt] Shadow update failed: {:?}", e),
     }
 
     info!("[mqtt] Workflow complete");
+
+    // Close TLS session
+    let _ = session.close().await;
+
     Ok(())
-}
-
-/// Simple RNG wrapper using a seed from the hardware RNG.
-struct ChaChaRng(u64);
-
-impl rand_core::CryptoRng for ChaChaRng {}
-
-impl rand_core::RngCore for ChaChaRng {
-    fn next_u32(&mut self) -> u32 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
-        (self.0 >> 33) as u32
-    }
-
-    fn next_u64(&mut self) -> u64 {
-        let a = self.next_u32() as u64;
-        let b = self.next_u32() as u64;
-        (a << 32) | b
-    }
-
-    fn fill_bytes(&mut self, dest: &mut [u8]) {
-        for chunk in dest.chunks_mut(4) {
-            let val = self.next_u32().to_le_bytes();
-            for (d, s) in chunk.iter_mut().zip(val.iter()) {
-                *d = *s;
-            }
-        }
-    }
-
-    fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
-        self.fill_bytes(dest);
-        Ok(())
-    }
 }

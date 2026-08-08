@@ -11,6 +11,8 @@ use esp_hal::{
     ram,
     rng::{Trng, TrngSource},
     rtc_cntl::Rtc,
+    rtc_cntl::{reset_reason, wakeup_cause, SocResetReason},
+    system::Cpu,
     timer::timg::TimerGroup,
 };
 use esp_metadata_generated::memory_range;
@@ -62,6 +64,11 @@ macro_rules! mk_static {
 async fn main(spawner: Spawner) {
     esp_println::logger::init_logger(log::LevelFilter::Info);
     info!("[main] Doorbell firmware starting...");
+
+    // Log reset and wakeup reason
+    let reason = reset_reason(Cpu::ProCpu);
+    let wake = wakeup_cause();
+    info!("[main] Reset reason: {:?}, Wake cause: {:?}", reason, wake);
 
     // Heap allocator (with reclaimed RAM)
     heap_allocator!(#[ram(reclaimed)] size: RECLAIMED_RAM);
@@ -187,10 +194,31 @@ async fn main(spawner: Spawner) {
     enter_deep_sleep();
 }
 
-/// Configure GPIO2 as wake source and enter deep sleep.
+/// Configure GPIO5 as wake source and enter deep sleep.
 fn enter_deep_sleep() -> ! {
-    info!("[main] Entering deep sleep (GPIO2 wake)...");
-    loop {
-        unsafe { core::arch::asm!("wfi") };
+    info!("[main] Entering deep sleep (GPIO5 wake + 10s timer)...");
+
+    // Small delay to let the log flush
+    for _ in 0..100_000 {
+        unsafe { core::arch::asm!("nop") };
+    }
+
+    unsafe {
+        use esp_hal::rtc_cntl::Rtc;
+        use esp_hal::rtc_cntl::sleep::{RtcioWakeupSource, TimerWakeupSource, WakeupLevel};
+        use esp_hal::gpio::RtcPinWithResistors;
+        use core::time::Duration;
+
+        let peripherals = esp_hal::peripherals::Peripherals::steal();
+        let mut rtc = Rtc::new(peripherals.LPWR);
+        let mut gpio5 = peripherals.GPIO5;
+
+        let wakeup_pins: &mut [(&mut dyn RtcPinWithResistors, WakeupLevel)] = &mut [
+            (&mut gpio5, WakeupLevel::High),
+        ];
+        let rtcio = RtcioWakeupSource::new(wakeup_pins);
+        let timer = TimerWakeupSource::new(Duration::from_secs(10));
+
+        rtc.sleep_deep(&[&rtcio, &timer]);
     }
 }

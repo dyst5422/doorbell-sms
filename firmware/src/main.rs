@@ -196,7 +196,7 @@ async fn main(spawner: Spawner) {
 
 /// Configure GPIO5 as wake source and enter deep sleep.
 fn enter_deep_sleep() -> ! {
-    info!("[main] Entering deep sleep (GPIO5 wake + 10s timer)...");
+    info!("[main] Entering deep sleep (GPIO5 wake)...");
 
     // Small delay to let the log flush
     for _ in 0..100_000 {
@@ -205,9 +205,8 @@ fn enter_deep_sleep() -> ! {
 
     unsafe {
         use esp_hal::rtc_cntl::Rtc;
-        use esp_hal::rtc_cntl::sleep::{RtcioWakeupSource, TimerWakeupSource, WakeupLevel};
+        use esp_hal::rtc_cntl::sleep::{RtcioWakeupSource, WakeupLevel};
         use esp_hal::gpio::RtcPinWithResistors;
-        use core::time::Duration;
 
         let peripherals = esp_hal::peripherals::Peripherals::steal();
         let mut rtc = Rtc::new(peripherals.LPWR);
@@ -217,8 +216,7 @@ fn enter_deep_sleep() -> ! {
             (&mut gpio5, WakeupLevel::High),
         ];
         let rtcio = RtcioWakeupSource::new(wakeup_pins);
-        let timer = TimerWakeupSource::new(Duration::from_secs(10));
 
-        rtc.sleep_deep(&[&rtcio, &timer]);
+        rtc.sleep_deep(&[&rtcio]);
     }
 }

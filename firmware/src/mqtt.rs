@@ -37,6 +37,8 @@ pub async fn mqtt_workflow(
     stack: Stack<'static>,
     relay_pin: &mut esp_hal::gpio::Output<'_>,
 ) -> Result<(), ()> {
+    let mqtt_start = embassy_time::Instant::now();
+
     let mut rx_buffer = [0; 4096];
     let mut tx_buffer = [0; 4096];
 
@@ -85,6 +87,8 @@ pub async fn mqtt_workflow(
         })?;
 
     info!("[mqtt] TLS handshake complete");
+    let tls_ms = embassy_time::Instant::now().duration_since(mqtt_start).as_millis();
+    info!("[timing] TLS complete: {}ms into mqtt_workflow", tls_ms);
 
     // MQTT client setup over TLS connection using BumpBuffer
     let mut mqtt_buffer = [0u8; 1024];
@@ -178,6 +182,8 @@ pub async fn mqtt_workflow(
     };
 
     info!("[mqtt] Current mode: {:?}", mode);
+    let shadow_ms = embassy_time::Instant::now().duration_since(mqtt_start).as_millis();
+    info!("[timing] Shadow read: {}ms into mqtt_workflow", shadow_ms);
 
     // Execute mode logic
     let should_publish = doorbell::execute_mode(mode, relay_pin).await;
@@ -212,6 +218,24 @@ pub async fn mqtt_workflow(
     }
 
     info!("[mqtt] Workflow complete");
+
+    // Publish timing data via debug topic
+    let total_mqtt_ms = embassy_time::Instant::now().duration_since(mqtt_start).as_millis();
+    info!("[timing] mqtt_workflow total: {}ms", total_mqtt_ms);
+
+    let mut timing_payload: heapless::String<256> = heapless::String::new();
+    let _ = core::fmt::Write::write_fmt(
+        &mut timing_payload,
+        format_args!(
+            r#"{{"tls_ms":{},"shadow_ms":{},"total_ms":{}}}"#,
+            tls_ms, shadow_ms, total_mqtt_ms
+        ),
+    );
+    let timing_topic = TopicName::new(MqttString::try_from("doorbell/debug").unwrap()).unwrap();
+    let timing_pub_options = PublicationOptions::new(TopicReference::Name(timing_topic));
+    let _ = client
+        .publish(&timing_pub_options, rust_mqtt::Bytes::from(timing_payload.as_bytes()))
+        .await;
 
     // Close TLS session
     let _ = session.close().await;

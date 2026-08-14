@@ -84,7 +84,7 @@ async fn main(spawner: Spawner) {
         esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
 
     // GPIO setup
-    let mut relay_pin = Output::new(peripherals.GPIO3, Level::Low, OutputConfig::default());
+    let mut relay_pin = Output::new(peripherals.GPIO0, Level::Low, OutputConfig::default());
 
     // Timer groups - TIMG0 used for esp-rtos
     let timg0 = TimerGroup::new(peripherals.TIMG0);
@@ -150,8 +150,12 @@ async fn main(spawner: Spawner) {
     )
     .unwrap();
 
-    // Network stack config (DHCP)
-    let net_config = NetConfig::dhcpv4(Default::default());
+    // Network stack config (Static IP — saves ~1s vs DHCP)
+    let net_config = NetConfig::ipv4_static(embassy_net::StaticConfigV4 {
+        address: embassy_net::Ipv4Cidr::new(embassy_net::Ipv4Address::new(192, 168, 1, 70), 24),
+        gateway: Some(embassy_net::Ipv4Address::new(192, 168, 1, 1)),
+        dns_servers: heapless::Vec::from_slice(&[embassy_net::Ipv4Address::new(192, 168, 1, 1)]).unwrap(),
+    });
 
     // Create network stack
     let stack_resources = mk_static!(StackResources<3>, StackResources::new());
@@ -175,24 +179,27 @@ async fn main(spawner: Spawner) {
         }
         Timer::after(Duration::from_millis(100)).await;
     }
+    let wifi_ms = embassy_time::Instant::now().duration_since(start).as_millis();
+    info!("[timing] WiFi connected: {}ms", wifi_ms);
 
-    // Wait for IP address
+    // Wait for IP address (static — should be immediate)
     info!("[main] Waiting for IP address...");
     loop {
         if let Some(cfg) = stack.config_v4() {
             info!("[main] Got IP: {}", cfg.address);
             break;
         }
-        if embassy_time::Instant::now() - start > wifi_timeout {
-            info!("[main] DHCP timeout, going to sleep");
-            enter_deep_sleep();
-        }
-        Timer::after(Duration::from_millis(100)).await;
+        Timer::after(Duration::from_millis(50)).await;
     }
+    let ip_ms = embassy_time::Instant::now().duration_since(start).as_millis();
+    info!("[timing] IP ready: {}ms", ip_ms);
 
     // Run MQTT workflow (shadow check → mode logic → publish)
     info!("[main] Starting MQTT workflow...");
     let _ = mqtt::mqtt_workflow(&mut tls, stack, &mut relay_pin).await;
+
+    let total_ms = embassy_time::Instant::now().duration_since(start).as_millis();
+    info!("[timing] Total wake-to-complete: {}ms", total_ms);
 
     // Done — enter deep sleep until next doorbell press
     info!("[main] Work complete, entering deep sleep...");

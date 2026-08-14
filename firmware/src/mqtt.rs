@@ -34,6 +34,7 @@ pub async fn mqtt_workflow(
     tls: &mut Tls<'_>,
     stack: Stack<'static>,
     relay_pin: &mut esp_hal::gpio::Output<'_>,
+    wake_start: embassy_time::Instant,
 ) -> Result<(), ()> {
     let mqtt_start = embassy_time::Instant::now();
 
@@ -107,7 +108,7 @@ pub async fn mqtt_workflow(
 
     // === STEP 1: Publish ring event IMMEDIATELY ===
     // Server-side Lambda will check mode before sending SMS
-    let ring_ms = embassy_time::Instant::now().duration_since(mqtt_start).as_millis();
+    let ring_ms = embassy_time::Instant::now().duration_since(wake_start).as_millis();
     let mut ring_payload: heapless::String<128> = heapless::String::new();
     let _ = core::fmt::Write::write_fmt(
         &mut ring_payload,

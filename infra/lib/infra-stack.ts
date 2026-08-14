@@ -5,6 +5,7 @@ import * as snsSubscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as iotAlpha from '@aws-cdk/aws-iot-alpha';
 import * as iotActions from '@aws-cdk/aws-iot-actions-alpha';
 import { Construct } from 'constructs';
@@ -150,6 +151,46 @@ export class InfraStack extends cdk.Stack {
         }],
       },
     });
+
+    // --- CloudWatch Dashboard ---
+    const wakeToPublish = new cloudwatch.Metric({
+      namespace: 'Doorbell',
+      metricName: 'WakeToPublishLatency',
+      statistic: 'Average',
+      period: cdk.Duration.minutes(1),
+    });
+
+    const lambdaProcessing = new cloudwatch.Metric({
+      namespace: 'Doorbell',
+      metricName: 'LambdaProcessingTime',
+      statistic: 'Average',
+      period: cdk.Duration.minutes(1),
+    });
+
+    const dashboard = new cloudwatch.Dashboard(this, 'DoorbellDashboard', {
+      dashboardName: 'Doorbell',
+    });
+
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'Wake to Ring Publish (device-side)',
+        left: [wakeToPublish],
+        width: 12,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Lambda Processing Time (config check + SMS)',
+        left: [lambdaProcessing],
+        width: 12,
+      }),
+    );
+
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'End-to-End Latency (both metrics)',
+        left: [wakeToPublish, lambdaProcessing],
+        width: 24,
+      }),
+    );
 
     // --- Outputs ---
     new cdk.CfnOutput(this, 'SnsTopicArn', {

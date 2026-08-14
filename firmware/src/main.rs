@@ -96,6 +96,9 @@ async fn main(spawner: Spawner) {
             .software_interrupt0,
     );
 
+    // Start global wake timer (measures total time from wake to ring publish)
+    let wake_start = embassy_time::Instant::now();
+
     // Hook Embassy timer for mbedtls
     let timer = mk_static!(EmbassyTimer, EmbassyTimer);
     unsafe {
@@ -196,7 +199,7 @@ async fn main(spawner: Spawner) {
 
     // Run MQTT workflow (shadow check → mode logic → publish)
     info!("[main] Starting MQTT workflow...");
-    let _ = mqtt::mqtt_workflow(&mut tls, stack, &mut relay_pin).await;
+    let _ = mqtt::mqtt_workflow(&mut tls, stack, &mut relay_pin, wake_start).await;
 
     let total_ms = embassy_time::Instant::now().duration_since(start).as_millis();
     info!("[timing] Total wake-to-complete: {}ms", total_ms);

@@ -107,17 +107,23 @@ pub async fn mqtt_workflow(
 
     // === STEP 1: Publish ring event IMMEDIATELY ===
     // Server-side Lambda will check mode before sending SMS
-    let timestamp = 0u64;
-    let payload = doorbell::build_ring_payload(timestamp);
+    let ring_ms = embassy_time::Instant::now().duration_since(mqtt_start).as_millis();
+    let mut ring_payload: heapless::String<128> = heapless::String::new();
+    let _ = core::fmt::Write::write_fmt(
+        &mut ring_payload,
+        format_args!(
+            r#"{{"event":"ring","ring_ms":{},"device":"doorbell"}}"#,
+            ring_ms
+        ),
+    );
     info!("[mqtt] Publishing ring event...");
     let ring_topic = TopicName::new(MqttString::try_from(TOPIC_RING).unwrap()).unwrap();
     let pub_options = PublicationOptions::new(TopicReference::Name(ring_topic)).at_least_once();
     match client
-        .publish(&pub_options, rust_mqtt::Bytes::from(payload.as_bytes()))
+        .publish(&pub_options, rust_mqtt::Bytes::from(ring_payload.as_bytes()))
         .await
     {
         Ok(_) => {
-            let ring_ms = embassy_time::Instant::now().duration_since(mqtt_start).as_millis();
             info!("[mqtt] Ring event published! ({}ms)", ring_ms);
         }
         Err(e) => error!("[mqtt] Ring publish failed: {:?}", e),

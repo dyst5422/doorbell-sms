@@ -54,6 +54,10 @@ export class InfraStack extends cdk.Stack {
       actions: ['iot:GetRetainedMessage'],
       resources: ['*'],
     }));
+    ringHandler.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['cloudwatch:PutMetricData'],
+      resources: ['*'],
+    }));
 
     // --- CloudWatch Log Group for debug ---
     const debugLogGroup = new logs.LogGroup(this, 'DoorbellDebugLogs', {

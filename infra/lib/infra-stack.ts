@@ -53,6 +53,7 @@ export class InfraStack extends cdk.Stack {
             Action: 'iot:Publish',
             Resource: [
               `arn:aws:iot:${this.region}:${this.account}:topic/doorbell/ring`,
+              `arn:aws:iot:${this.region}:${this.account}:topic/doorbell/debug`,
               `arn:aws:iot:${this.region}:${this.account}:topic/$aws/things/doorbell/shadow/get`,
               `arn:aws:iot:${this.region}:${this.account}:topic/$aws/things/doorbell/shadow/update`,
             ],

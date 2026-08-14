@@ -112,6 +112,15 @@ pub async fn mqtt_workflow(
 
     // Subscribe to shadow get/accepted
     info!("[mqtt] Subscribing to shadow topic...");
+
+    // Publish debug boot message
+    let debug_topic = TopicName::new(MqttString::try_from("doorbell/debug").unwrap()).unwrap();
+    let debug_pub_options = PublicationOptions::new(TopicReference::Name(debug_topic));
+    let _ = client
+        .publish(&debug_pub_options, rust_mqtt::Bytes::from(&b"{\"event\":\"boot\"}"[..]))
+        .await;
+    info!("[mqtt] Debug boot message published");
+
     let shadow_topic = TopicName::new(MqttString::try_from(TOPIC_SHADOW_GET_ACCEPTED).unwrap()).unwrap();
     match client
         .subscribe(shadow_topic.clone().into(), SubscriptionOptions::new().at_least_once())

@@ -218,7 +218,7 @@ fn enter_deep_sleep() -> ! {
         let mut gpio5 = peripherals.GPIO5;
 
         let wakeup_pins: &mut [(&mut dyn RtcPinWithResistors, WakeupLevel)] = &mut [
-            (&mut gpio5, WakeupLevel::High),
+            (&mut gpio5, WakeupLevel::Low),
         ];
         let rtcio = RtcioWakeupSource::new(wakeup_pins);
 

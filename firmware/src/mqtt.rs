@@ -164,23 +164,24 @@ pub async fn mqtt_workflow(
         }
     }
 
-    let config_ms = embassy_time::Instant::now().duration_since(mqtt_start).as_millis();
-    info!("[mqtt] Mode: {:?} (config at {}ms)", mode, config_ms);
+    let config_ms = embassy_time::Instant::now().duration_since(wake_start).as_millis();
+    info!("[mqtt] Mode: {:?} (config at {}ms from wake)", mode, config_ms);
 
     // === STEP 3: Fire chime if mode requires it ===
     if mode.should_ring_chime() {
         doorbell::execute_mode(mode, relay_pin).await;
     }
+    let chime_ms = embassy_time::Instant::now().duration_since(wake_start).as_millis();
 
-    // === STEP 4: Publish timing debug ===
+    // === STEP 4: Publish timing debug with chime_ms ===
     let total_mqtt_ms = embassy_time::Instant::now().duration_since(mqtt_start).as_millis();
 
     let mut timing_payload: heapless::String<256> = heapless::String::new();
     let _ = core::fmt::Write::write_fmt(
         &mut timing_payload,
         format_args!(
-            r#"{{"tls_ms":{},"config_ms":{},"total_ms":{}}}"#,
-            tls_ms, config_ms, total_mqtt_ms
+            r#"{{"tls_ms":{},"ring_ms":{},"chime_ms":{},"config_ms":{},"total_ms":{}}}"#,
+            tls_ms, ring_ms, chime_ms, config_ms, total_mqtt_ms
         ),
     );
     let timing_topic = TopicName::new(MqttString::try_from("doorbell/debug").unwrap()).unwrap();

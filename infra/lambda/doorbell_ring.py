@@ -13,23 +13,15 @@ def handler(event, context):
     """
     Called by IoT Rule when doorbell/ring is published.
     Checks the retained config to determine if SMS should be sent.
-    Emits latency metric to CloudWatch.
+    Emits latency metrics to CloudWatch.
     """
     invoke_time = time.time()
     print(f"Ring event received: {json.dumps(event)}")
 
-    # Emit latency metric if device included timing
+    # Device-side latency (wake to MQTT publish)
     ring_ms = event.get('ring_ms')
     if ring_ms is not None:
         print(f"Device-side latency (wake to publish): {ring_ms}ms")
-        cloudwatch.put_metric_data(
-            Namespace='Doorbell',
-            MetricData=[{
-                'MetricName': 'WakeToPublishLatency',
-                'Value': float(ring_ms),
-                'Unit': 'Milliseconds',
-            }]
-        )
 
     # Get the current mode from the retained config message
     try:
@@ -49,18 +41,31 @@ def handler(event, context):
             Message='DoorbellSMS: Someone is at your front door!',
         )
         sms_time = time.time()
-        total_lambda_ms = (sms_time - invoke_time) * 1000
-        print(f"SMS sent! Lambda processing time: {total_lambda_ms:.0f}ms")
+        lambda_ms = (sms_time - invoke_time) * 1000
+        print(f"SMS sent! Lambda processing time: {lambda_ms:.0f}ms")
 
-        # Emit total Lambda processing time
-        cloudwatch.put_metric_data(
-            Namespace='Doorbell',
-            MetricData=[{
-                'MetricName': 'LambdaProcessingTime',
-                'Value': total_lambda_ms,
+        # End-to-end: button push → SMS sent = device ring_ms + lambda processing
+        metrics = [{
+            'MetricName': 'LambdaProcessingTime',
+            'Value': lambda_ms,
+            'Unit': 'Milliseconds',
+        }]
+
+        if ring_ms is not None:
+            e2e_sms_ms = ring_ms + lambda_ms
+            print(f"End-to-end (button push to SMS sent): {e2e_sms_ms:.0f}ms")
+            metrics.append({
+                'MetricName': 'ButtonToSmsSent',
+                'Value': e2e_sms_ms,
                 'Unit': 'Milliseconds',
-            }]
-        )
+            })
+            metrics.append({
+                'MetricName': 'WakeToPublishLatency',
+                'Value': float(ring_ms),
+                'Unit': 'Milliseconds',
+            })
+
+        cloudwatch.put_metric_data(Namespace='Doorbell', MetricData=metrics)
     else:
         print(f"Mode is '{mode}', skipping SMS")
 

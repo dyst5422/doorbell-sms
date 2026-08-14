@@ -152,7 +152,30 @@ export class InfraStack extends cdk.Stack {
       },
     });
 
+    // --- CloudWatch Metric Filter (extract chime_ms from debug logs) ---
+    debugLogGroup.addMetricFilter('ButtonToChimeFilter', {
+      filterPattern: logs.FilterPattern.exists('$.chime_ms'),
+      metricNamespace: 'Doorbell',
+      metricName: 'ButtonToChime',
+      metricValue: '$.chime_ms',
+      unit: cloudwatch.Unit.MILLISECONDS,
+    });
+
     // --- CloudWatch Dashboard ---
+    const buttonToSms = new cloudwatch.Metric({
+      namespace: 'Doorbell',
+      metricName: 'ButtonToSmsSent',
+      statistic: 'Average',
+      period: cdk.Duration.minutes(1),
+    });
+
+    const buttonToChime = new cloudwatch.Metric({
+      namespace: 'Doorbell',
+      metricName: 'ButtonToChime',
+      statistic: 'Average',
+      period: cdk.Duration.minutes(1),
+    });
+
     const wakeToPublish = new cloudwatch.Metric({
       namespace: 'Doorbell',
       metricName: 'WakeToPublishLatency',
@@ -173,21 +196,21 @@ export class InfraStack extends cdk.Stack {
 
     dashboard.addWidgets(
       new cloudwatch.GraphWidget({
-        title: 'Wake to Ring Publish (device-side)',
-        left: [wakeToPublish],
+        title: 'Button Push → SMS Sent (end-to-end)',
+        left: [buttonToSms],
         width: 12,
       }),
       new cloudwatch.GraphWidget({
-        title: 'Lambda Processing Time (config check + SMS)',
-        left: [lambdaProcessing],
+        title: 'Button Push → Chime Trigger (end-to-end)',
+        left: [buttonToChime],
         width: 12,
       }),
     );
 
     dashboard.addWidgets(
       new cloudwatch.GraphWidget({
-        title: 'End-to-End Latency (both metrics)',
-        left: [wakeToPublish, lambdaProcessing],
+        title: 'Latency Breakdown',
+        left: [wakeToPublish, lambdaProcessing, buttonToSms, buttonToChime],
         width: 24,
       }),
     );

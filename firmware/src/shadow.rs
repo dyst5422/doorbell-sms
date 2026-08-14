@@ -90,3 +90,25 @@ pub fn build_reported_state(mode: Mode, timestamp: u64) -> String<128> {
     );
     json
 }
+
+/// Parse the mode from a retained config message.
+///
+/// Expected format: {"mode":"sms"}
+pub fn parse_mode_from_config(payload: &[u8]) -> Mode {
+    let payload_str = core::str::from_utf8(payload).unwrap_or("");
+
+    if let Some(mode_idx) = payload_str.find("\"mode\"") {
+        let after_mode = &payload_str[mode_idx + 6..];
+        if let Some(colon_quote) = after_mode.find('"') {
+            let value_start = colon_quote + 1;
+            if let Some(value_end) = after_mode[value_start..].find('"') {
+                let mode_str = &after_mode[value_start..value_start + value_end];
+                info!("[config] Parsed mode: '{}'", mode_str);
+                return Mode::from_str(mode_str);
+            }
+        }
+    }
+
+    warn!("[config] Could not parse mode from config, defaulting to Sms");
+    Mode::Sms
+}

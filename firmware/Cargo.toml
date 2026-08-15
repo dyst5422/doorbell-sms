@@ -32,6 +32,7 @@ esp-backtrace = { version = "0.19.0", features = ["esp32c3", "panic-handler", "p
 esp-println = { version = "0.17", features = ["esp32c3", "log-04"] }
 esp-bootloader-esp-idf = { version = "0.5", features = ["esp32c3", "log-04"] }
 esp-metadata-generated = { version = "0.4", features = ["esp32c3"] }
+nb = "1.1"
 
 # TLS via mbedtls-rs
 mbedtls-rs = { git = "https://github.com/esp-rs/mbedtls-rs.git", features = ["esp32c3", "tls", "embassy-time", "log", "hook-wall-clock"] }

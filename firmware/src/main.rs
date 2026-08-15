@@ -94,11 +94,17 @@ async fn main(spawner: Spawner) {
         let mut adc_config = AdcConfig::new();
         let mut adc_pin = adc_config.enable_pin(peripherals.GPIO0, Attenuation::_11dB);
         let mut adc = Adc::new(peripherals.ADC1, adc_config);
-        let adc_raw: u16 = adc.read_oneshot(&mut adc_pin).unwrap();
+        // read_oneshot returns nb::Result — retry until ready
+        let adc_raw: u16 = loop {
+            match adc.read_oneshot(&mut adc_pin) {
+                Ok(val) => break val,
+                Err(nb::Error::WouldBlock) => continue,
+                Err(_) => break 0,
+            }
+        };
         // At 11dB attenuation, full scale is ~2.5V mapped to 0-4095
         // Voltage divider halves the battery voltage, so: battery_mv = (adc_raw / 4095) * 2500 * 2
         (adc_raw as u32 * 5000) / 4095
-        // adc and adc_pin dropped here, but ADC1 peripheral is consumed
     };
     info!("[main] Battery voltage: {}mV", battery_mv);
 

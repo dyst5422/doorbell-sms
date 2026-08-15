@@ -225,14 +225,9 @@ async fn main(spawner: Spawner) {
     info!("[main] Starting MQTT workflow...");
     let mode = mqtt::mqtt_workflow(&mut tls, stack, battery_mv).await.unwrap_or(shadow::Mode::On);
 
-    // Fire chime only if woken by doorbell press (not fresh power-on)
-    // On fresh boot, wake cause is Undefined. On GPIO wake from deep sleep, it's Gpio.
-    use esp_hal::system::SleepSource;
-    let is_doorbell_wake = !matches!(wake, SleepSource::Undefined);
-    if is_doorbell_wake && mode.should_ring_chime() {
+    // Fire chime if mode is on
+    if mode.should_ring_chime() {
         doorbell::ring_chime(&mut relay_pin).await;
-    } else if !is_doorbell_wake {
-        info!("[main] Fresh boot (not doorbell wake), skipping chime");
     } else {
         info!("[main] Chime is off, skipping");
     }

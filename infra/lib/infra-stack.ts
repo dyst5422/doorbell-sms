@@ -161,6 +161,15 @@ export class InfraStack extends cdk.Stack {
       unit: cloudwatch.Unit.MILLISECONDS,
     });
 
+    // --- CloudWatch Metric Filter (extract battery_mv from debug logs) ---
+    debugLogGroup.addMetricFilter('BatteryVoltageFilter', {
+      filterPattern: logs.FilterPattern.exists('$.battery_mv'),
+      metricNamespace: 'Doorbell',
+      metricName: 'BatteryMillivolts',
+      metricValue: '$.battery_mv',
+      unit: cloudwatch.Unit.NONE,
+    });
+
     // --- CloudWatch Dashboard ---
     const buttonToSms = new cloudwatch.Metric({
       namespace: 'Doorbell',
@@ -172,6 +181,13 @@ export class InfraStack extends cdk.Stack {
     const buttonToChime = new cloudwatch.Metric({
       namespace: 'Doorbell',
       metricName: 'ButtonToChime',
+      statistic: 'Average',
+      period: cdk.Duration.minutes(1),
+    });
+
+    const batteryMv = new cloudwatch.Metric({
+      namespace: 'Doorbell',
+      metricName: 'BatteryMillivolts',
       statistic: 'Average',
       period: cdk.Duration.minutes(1),
     });
@@ -212,6 +228,19 @@ export class InfraStack extends cdk.Stack {
         title: 'Latency Breakdown',
         left: [wakeToPublish, lambdaProcessing, buttonToSms, buttonToChime],
         width: 24,
+      }),
+    );
+
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'Battery Voltage (mV)',
+        left: [batteryMv],
+        width: 24,
+        leftAnnotations: [{
+          value: 3600,
+          label: 'Low Battery Warning',
+          color: '#ff0000',
+        }],
       }),
     );
 

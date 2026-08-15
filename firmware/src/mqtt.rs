@@ -35,6 +35,7 @@ pub async fn mqtt_workflow(
     stack: Stack<'static>,
     relay_pin: &mut esp_hal::gpio::Output<'_>,
     wake_start: embassy_time::Instant,
+    battery_mv: u32,
 ) -> Result<(), ()> {
     let mqtt_start = embassy_time::Instant::now();
 
@@ -180,8 +181,8 @@ pub async fn mqtt_workflow(
     let _ = core::fmt::Write::write_fmt(
         &mut timing_payload,
         format_args!(
-            r#"{{"tls_ms":{},"ring_ms":{},"chime_ms":{},"config_ms":{},"total_ms":{}}}"#,
-            tls_ms, ring_ms, chime_ms, config_ms, total_mqtt_ms
+            r#"{{"tls_ms":{},"ring_ms":{},"chime_ms":{},"config_ms":{},"total_ms":{},"battery_mv":{}}}"#,
+            tls_ms, ring_ms, chime_ms, config_ms, total_mqtt_ms, battery_mv
         ),
     );
     let timing_topic = TopicName::new(MqttString::try_from("doorbell/debug").unwrap()).unwrap();

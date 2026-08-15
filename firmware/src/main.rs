@@ -84,7 +84,23 @@ async fn main(spawner: Spawner) {
         esp_hal::init(esp_hal::Config::default().with_cpu_clock(CpuClock::max()));
 
     // GPIO setup
-    let mut relay_pin = Output::new(peripherals.GPIO0, Level::Low, OutputConfig::default());
+    let mut relay_pin = Output::new(peripherals.GPIO7, Level::Low, OutputConfig::default());
+
+    // Battery voltage monitoring via ADC on GPIO0
+    // Voltage divider: Battery+ → 100kΩ → GPIO0 → 100kΩ → GND
+    // ADC reads half the battery voltage
+    use esp_hal::analog::adc::{Adc, AdcConfig, Attenuation};
+    let battery_mv = {
+        let mut adc_config = AdcConfig::new();
+        let mut adc_pin = adc_config.enable_pin(peripherals.GPIO0, Attenuation::_11dB);
+        let mut adc = Adc::new(peripherals.ADC1, adc_config);
+        let adc_raw: u16 = adc.read_oneshot(&mut adc_pin).unwrap();
+        // At 11dB attenuation, full scale is ~2.5V mapped to 0-4095
+        // Voltage divider halves the battery voltage, so: battery_mv = (adc_raw / 4095) * 2500 * 2
+        (adc_raw as u32 * 5000) / 4095
+        // adc and adc_pin dropped here, but ADC1 peripheral is consumed
+    };
+    info!("[main] Battery voltage: {}mV", battery_mv);
 
     // Timer groups - TIMG0 used for esp-rtos
     let timg0 = TimerGroup::new(peripherals.TIMG0);
@@ -130,7 +146,9 @@ async fn main(spawner: Spawner) {
     let _hooked = unsafe { accel_queue.hook() };
 
     // Create TRNG for random number generation
-    let _trng_source = TrngSource::new(peripherals.RNG, peripherals.ADC1);
+    let _trng_source = unsafe {
+        TrngSource::new(peripherals.RNG, esp_hal::peripherals::ADC1::steal())
+    };
     let trng = mk_static!(Trng, Trng::try_new().unwrap());
 
     // Get seed before handing trng to Tls (which borrows it mutably)
@@ -199,7 +217,7 @@ async fn main(spawner: Spawner) {
 
     // Run MQTT workflow (shadow check → mode logic → publish)
     info!("[main] Starting MQTT workflow...");
-    let _ = mqtt::mqtt_workflow(&mut tls, stack, &mut relay_pin, wake_start).await;
+    let _ = mqtt::mqtt_workflow(&mut tls, stack, &mut relay_pin, wake_start, battery_mv).await;
 
     let total_ms = embassy_time::Instant::now().duration_since(start).as_millis();
     info!("[timing] Total wake-to-complete: {}ms", total_ms);

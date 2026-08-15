@@ -179,7 +179,7 @@ async fn main(spawner: Spawner) {
 
     // Network stack config (Static IP — saves ~1s vs DHCP)
     let net_config = NetConfig::ipv4_static(embassy_net::StaticConfigV4 {
-        address: embassy_net::Ipv4Cidr::new(embassy_net::Ipv4Address::new(192, 168, 1, 70), 24),
+        address: embassy_net::Ipv4Cidr::new(embassy_net::Ipv4Address::new(192, 168, 1, 71), 24),
         gateway: Some(embassy_net::Ipv4Address::new(192, 168, 1, 1)),
         dns_servers: heapless::Vec::from_slice(&[embassy_net::Ipv4Address::new(192, 168, 1, 1)]).unwrap(),
     });
@@ -221,9 +221,16 @@ async fn main(spawner: Spawner) {
     let ip_ms = embassy_time::Instant::now().duration_since(start).as_millis();
     info!("[timing] IP ready: {}ms", ip_ms);
 
-    // Run MQTT workflow (shadow check → mode logic → publish)
+    // Run MQTT workflow (read config + report battery)
     info!("[main] Starting MQTT workflow...");
-    let _ = mqtt::mqtt_workflow(&mut tls, stack, &mut relay_pin, wake_start, battery_mv).await;
+    let mode = mqtt::mqtt_workflow(&mut tls, stack, battery_mv).await.unwrap_or(shadow::Mode::On);
+
+    // Fire chime if mode is on
+    if mode.should_ring_chime() {
+        doorbell::ring_chime(&mut relay_pin).await;
+    } else {
+        info!("[main] Chime is off, skipping");
+    }
 
     let total_ms = embassy_time::Instant::now().duration_since(start).as_millis();
     info!("[timing] Total wake-to-complete: {}ms", total_ms);

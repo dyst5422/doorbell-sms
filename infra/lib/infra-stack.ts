@@ -1,79 +1,51 @@
 import * as cdk from 'aws-cdk-lib/core';
 import * as iot from 'aws-cdk-lib/aws-iot';
-import * as sns from 'aws-cdk-lib/aws-sns';
-import * as snsSubscriptions from 'aws-cdk-lib/aws-sns-subscriptions';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
-import * as iotAlpha from '@aws-cdk/aws-iot-alpha';
-import * as iotActions from '@aws-cdk/aws-iot-actions-alpha';
 import { Construct } from 'constructs';
 import * as path from 'path';
 
-interface DoorbellStackProps extends cdk.StackProps {
-  /**
-   * Phone numbers to receive SMS notifications.
-   * Format: +1XXXXXXXXXX
-   */
-  phoneNumbers: string[];
-}
-
 export class InfraStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props: DoorbellStackProps) {
+  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // --- SNS Topic ---
-    const alertsTopic = new sns.Topic(this, 'DoorbellAlerts', {
-      topicName: 'doorbell-alerts',
-      displayName: 'Doorbell Alerts',
-    });
-
-    // Subscribe phone numbers
-    for (const phone of props.phoneNumbers) {
-      alertsTopic.addSubscription(
-        new snsSubscriptions.SmsSubscription(phone)
-      );
-    }
-
-    // --- Lambda: Ring Handler ---
-    // Checks doorbell/config retained message for mode before sending SMS
-    const ringHandler = new lambda.Function(this, 'DoorbellRingHandler', {
-      functionName: 'doorbell-ring-handler',
+    // --- Lambda: Alexa Smart Home Skill Handler ---
+    // Handles PowerController (chime on/off) and EndpointHealth (battery)
+    const alexaHandler = new lambda.Function(this, 'AlexaSmartHomeHandler', {
+      functionName: 'doorbell-alexa-handler',
       runtime: lambda.Runtime.PYTHON_3_12,
-      handler: 'doorbell_ring.handler',
+      handler: 'alexa_smart_home.handler',
       code: lambda.Code.fromAsset(path.join(__dirname, '../lambda')),
       timeout: cdk.Duration.seconds(10),
-      environment: {
-        SNS_TOPIC_ARN: alertsTopic.topicArn,
-      },
     });
 
-    // Grant Lambda permissions
-    alertsTopic.grantPublish(ringHandler);
-    ringHandler.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['iot:GetRetainedMessage'],
-      resources: ['*'],
-    }));
-    ringHandler.addToRolePolicy(new iam.PolicyStatement({
-      actions: ['cloudwatch:PutMetricData'],
+    // Grant Lambda permissions to IoT (publish retained config + read shadow)
+    alexaHandler.addToRolePolicy(new iam.PolicyStatement({
+      actions: [
+        'iot:Publish',
+        'iot:RetainPublish',
+        'iot:GetRetainedMessage',
+        'iot:GetThingShadow',
+      ],
       resources: ['*'],
     }));
 
-    // --- CloudWatch Log Group for debug ---
-    const debugLogGroup = new logs.LogGroup(this, 'DoorbellDebugLogs', {
-      logGroupName: '/iot/doorbell',
-      retention: logs.RetentionDays.TWO_WEEKS,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    // Allow Alexa to invoke this Lambda
+    alexaHandler.addPermission('AlexaInvoke', {
+      principal: new iam.ServicePrincipal('alexa-connectedhome.amazon.com'),
+      action: 'lambda:InvokeFunction',
+      // eventSourceToken can be added after skill is created
     });
 
     // --- IoT Core: Thing ---
-    const thing = new iot.CfnThing(this, 'DoorbellThing', {
+    new iot.CfnThing(this, 'DoorbellThing', {
       thingName: 'doorbell',
     });
 
     // --- IoT Core: Policy ---
-    const iotPolicy = new iot.CfnPolicy(this, 'DoorbellPolicy', {
+    new iot.CfnPolicy(this, 'DoorbellPolicy', {
       policyName: 'doorbell-policy',
       policyDocument: {
         Version: '2012-10-17',
@@ -87,9 +59,7 @@ export class InfraStack extends cdk.Stack {
             Effect: 'Allow',
             Action: 'iot:Publish',
             Resource: [
-              `arn:aws:iot:${this.region}:${this.account}:topic/doorbell/ring`,
               `arn:aws:iot:${this.region}:${this.account}:topic/doorbell/debug`,
-              `arn:aws:iot:${this.region}:${this.account}:topic/$aws/things/doorbell/shadow/get`,
               `arn:aws:iot:${this.region}:${this.account}:topic/$aws/things/doorbell/shadow/update`,
             ],
           },
@@ -97,23 +67,12 @@ export class InfraStack extends cdk.Stack {
             Effect: 'Allow',
             Action: 'iot:Subscribe',
             Resource: [
-              `arn:aws:iot:${this.region}:${this.account}:topicfilter/$aws/things/doorbell/shadow/get/accepted`,
-              `arn:aws:iot:${this.region}:${this.account}:topicfilter/$aws/things/doorbell/shadow/get/rejected`,
               `arn:aws:iot:${this.region}:${this.account}:topicfilter/doorbell/config`,
             ],
           },
           {
             Effect: 'Allow',
             Action: 'iot:Receive',
-            Resource: [
-              `arn:aws:iot:${this.region}:${this.account}:topic/$aws/things/doorbell/shadow/get/accepted`,
-              `arn:aws:iot:${this.region}:${this.account}:topic/$aws/things/doorbell/shadow/get/rejected`,
-              `arn:aws:iot:${this.region}:${this.account}:topic/doorbell/config`,
-            ],
-          },
-          {
-            Effect: 'Allow',
-            Action: 'iot:RetainPublish',
             Resource: [
               `arn:aws:iot:${this.region}:${this.account}:topic/doorbell/config`,
             ],
@@ -122,18 +81,23 @@ export class InfraStack extends cdk.Stack {
       },
     });
 
-    // --- IoT Core: Topic Rule (doorbell/ring → Lambda) ---
-    const ringRule = new iotAlpha.TopicRule(this, 'DoorbellRingRule', {
-      topicRuleName: 'doorbell_ring_to_sns',
-      sql: iotAlpha.IotSql.fromStringAsVer20160323(
-        "SELECT * FROM 'doorbell/ring'"
-      ),
-      actions: [
-        new iotActions.LambdaFunctionAction(ringHandler),
-      ],
+    // --- CloudWatch: Debug log group ---
+    const debugLogGroup = new logs.LogGroup(this, 'DoorbellDebugLogs', {
+      logGroupName: '/iot/doorbell',
+      retention: logs.RetentionDays.TWO_WEEKS,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // --- IoT Core: Topic Rule (doorbell/debug → CloudWatch) ---
+    // --- CloudWatch: Battery metric filter ---
+    debugLogGroup.addMetricFilter('BatteryVoltageFilter', {
+      filterPattern: logs.FilterPattern.exists('$.battery_mv'),
+      metricNamespace: 'Doorbell',
+      metricName: 'BatteryMillivolts',
+      metricValue: '$.battery_mv',
+      unit: cloudwatch.Unit.NONE,
+    });
+
+    // --- IoT Rule: doorbell/debug → CloudWatch ---
     const debugRole = new iam.Role(this, 'DoorbellDebugRuleRole', {
       assumedBy: new iam.ServicePrincipal('iot.amazonaws.com'),
     });
@@ -152,84 +116,17 @@ export class InfraStack extends cdk.Stack {
       },
     });
 
-    // --- CloudWatch Metric Filter (extract chime_ms from debug logs) ---
-    debugLogGroup.addMetricFilter('ButtonToChimeFilter', {
-      filterPattern: logs.FilterPattern.exists('$.chime_ms'),
-      metricNamespace: 'Doorbell',
-      metricName: 'ButtonToChime',
-      metricValue: '$.chime_ms',
-      unit: cloudwatch.Unit.MILLISECONDS,
-    });
-
-    // --- CloudWatch Metric Filter (extract battery_mv from debug logs) ---
-    debugLogGroup.addMetricFilter('BatteryVoltageFilter', {
-      filterPattern: logs.FilterPattern.exists('$.battery_mv'),
-      metricNamespace: 'Doorbell',
-      metricName: 'BatteryMillivolts',
-      metricValue: '$.battery_mv',
-      unit: cloudwatch.Unit.NONE,
-    });
-
     // --- CloudWatch Dashboard ---
-    const buttonToSms = new cloudwatch.Metric({
-      namespace: 'Doorbell',
-      metricName: 'ButtonToSmsSent',
-      statistic: 'Average',
-      period: cdk.Duration.minutes(1),
-    });
-
-    const buttonToChime = new cloudwatch.Metric({
-      namespace: 'Doorbell',
-      metricName: 'ButtonToChime',
-      statistic: 'Average',
-      period: cdk.Duration.minutes(1),
-    });
-
     const batteryMv = new cloudwatch.Metric({
       namespace: 'Doorbell',
       metricName: 'BatteryMillivolts',
       statistic: 'Average',
-      period: cdk.Duration.minutes(1),
-    });
-
-    const wakeToPublish = new cloudwatch.Metric({
-      namespace: 'Doorbell',
-      metricName: 'WakeToPublishLatency',
-      statistic: 'Average',
-      period: cdk.Duration.minutes(1),
-    });
-
-    const lambdaProcessing = new cloudwatch.Metric({
-      namespace: 'Doorbell',
-      metricName: 'LambdaProcessingTime',
-      statistic: 'Average',
-      period: cdk.Duration.minutes(1),
+      period: cdk.Duration.minutes(5),
     });
 
     const dashboard = new cloudwatch.Dashboard(this, 'DoorbellDashboard', {
       dashboardName: 'Doorbell',
     });
-
-    dashboard.addWidgets(
-      new cloudwatch.GraphWidget({
-        title: 'Button Push → SMS Sent (end-to-end)',
-        left: [buttonToSms],
-        width: 12,
-      }),
-      new cloudwatch.GraphWidget({
-        title: 'Button Push → Chime Trigger (end-to-end)',
-        left: [buttonToChime],
-        width: 12,
-      }),
-    );
-
-    dashboard.addWidgets(
-      new cloudwatch.GraphWidget({
-        title: 'Latency Breakdown',
-        left: [wakeToPublish, lambdaProcessing, buttonToSms, buttonToChime],
-        width: 24,
-      }),
-    );
 
     dashboard.addWidgets(
       new cloudwatch.GraphWidget({
@@ -245,29 +142,19 @@ export class InfraStack extends cdk.Stack {
     );
 
     // --- Outputs ---
-    new cdk.CfnOutput(this, 'SnsTopicArn', {
-      value: alertsTopic.topicArn,
-      description: 'SNS topic ARN for doorbell alerts',
+    new cdk.CfnOutput(this, 'AlexaLambdaArn', {
+      value: alexaHandler.functionArn,
+      description: 'Lambda ARN for Alexa Smart Home Skill configuration',
     });
 
-    new cdk.CfnOutput(this, 'LambdaFunctionArn', {
-      value: ringHandler.functionArn,
-      description: 'Lambda function that handles ring events',
+    new cdk.CfnOutput(this, 'ModeChangeCommand', {
+      value: `aws iot-data publish --topic "doorbell/config" --payload '{"mode":"on"}' --retain --region ${this.region} --cli-binary-format raw-in-base64-out`,
+      description: 'CLI command to change doorbell mode (on|off)',
     });
 
     new cdk.CfnOutput(this, 'IoTEndpoint', {
       value: `See: aws iot describe-endpoint --endpoint-type iot:Data-ATS --region ${this.region}`,
-      description: 'Run this command to get your IoT data endpoint for firmware config',
-    });
-
-    new cdk.CfnOutput(this, 'ModeChangeCommand', {
-      value: `aws iot-data publish --topic "doorbell/config" --payload '{"mode":"sms"}' --retain --region ${this.region} --cli-binary-format raw-in-base64-out`,
-      description: 'Command to change doorbell mode (sms|chime|both|silent)',
-    });
-
-    new cdk.CfnOutput(this, 'NextSteps', {
-      value: 'Create device certificate: aws iot create-keys-and-certificate --set-as-active --certificate-pem-outfile certs/device.cert.pem --private-key-outfile certs/device.key.pem --region us-west-2',
-      description: 'Certificate must be created via CLI (CDK cannot export private keys)',
+      description: 'IoT data endpoint for firmware config',
     });
   }
 }

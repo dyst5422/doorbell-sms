@@ -19,24 +19,20 @@ use rust_mqtt::{
 
 use crate::config::{
     AWS_IOT_ENDPOINT, AWS_IOT_ENDPOINT_CSTR, AWS_IOT_PORT, CA_CERT, DEVICE_CERT, DEVICE_KEY,
-    MQTT_CLIENT_ID, TOPIC_RING, TOPIC_SHADOW_UPDATE,
+    MQTT_CLIENT_ID,
 };
-use crate::doorbell;
 use crate::shadow::{self, Mode};
 
-/// MQTT workflow:
+/// Simplified MQTT workflow:
 /// 1. Connect (WiFi already done) → TLS → MQTT
-/// 2. Immediately publish doorbell/ring (server decides whether to SMS)
-/// 3. Subscribe to doorbell/config, read retained mode
-/// 4. If mode includes chime → fire relay
-/// 5. Publish timing debug, sleep
+/// 2. Subscribe to doorbell/config, read retained mode
+/// 3. Update device shadow with battery level
+/// 4. Return the mode for chime decision
 pub async fn mqtt_workflow(
     tls: &mut Tls<'_>,
     stack: Stack<'static>,
-    relay_pin: &mut esp_hal::gpio::Output<'_>,
-    wake_start: embassy_time::Instant,
     battery_mv: u32,
-) -> Result<(), ()> {
+) -> Result<Mode, ()> {
     let mqtt_start = embassy_time::Instant::now();
 
     let mut rx_buffer = [0; 4096];
@@ -86,8 +82,6 @@ pub async fn mqtt_workflow(
         })?;
 
     info!("[mqtt] TLS handshake complete");
-    let tls_ms = embassy_time::Instant::now().duration_since(mqtt_start).as_millis();
-    info!("[timing] TLS complete: {}ms", tls_ms);
 
     // MQTT connect
     let mut mqtt_buffer = [0u8; 1024];
@@ -107,31 +101,7 @@ pub async fn mqtt_workflow(
         }
     }
 
-    // === STEP 1: Publish ring event IMMEDIATELY ===
-    // Server-side Lambda will check mode before sending SMS
-    let ring_ms = embassy_time::Instant::now().duration_since(wake_start).as_millis();
-    let mut ring_payload: heapless::String<128> = heapless::String::new();
-    let _ = core::fmt::Write::write_fmt(
-        &mut ring_payload,
-        format_args!(
-            r#"{{"event":"ring","ring_ms":{},"device":"doorbell"}}"#,
-            ring_ms
-        ),
-    );
-    info!("[mqtt] Publishing ring event...");
-    let ring_topic = TopicName::new(MqttString::try_from(TOPIC_RING).unwrap()).unwrap();
-    let pub_options = PublicationOptions::new(TopicReference::Name(ring_topic)).at_least_once();
-    match client
-        .publish(&pub_options, rust_mqtt::Bytes::from(ring_payload.as_bytes()))
-        .await
-    {
-        Ok(_) => {
-            info!("[mqtt] Ring event published! ({}ms)", ring_ms);
-        }
-        Err(e) => error!("[mqtt] Ring publish failed: {:?}", e),
-    }
-
-    // === STEP 2: Read config for chime decision ===
+    // Subscribe to config topic and read retained message
     info!("[mqtt] Subscribing to config...");
     let config_topic = TopicName::new(MqttString::try_from("doorbell/config").unwrap()).unwrap();
     match client
@@ -146,7 +116,7 @@ pub async fn mqtt_workflow(
     }
 
     // Poll for SUBACK + retained config
-    let mut mode = Mode::Sms;
+    let mut mode = Mode::On; // Default to chime on
     for _ in 0..5 {
         match client.poll().await {
             Ok(Event::Suback(_)) => {
@@ -165,36 +135,44 @@ pub async fn mqtt_workflow(
         }
     }
 
-    let config_ms = embassy_time::Instant::now().duration_since(wake_start).as_millis();
-    info!("[mqtt] Mode: {:?} (config at {}ms from wake)", mode, config_ms);
+    info!("[mqtt] Mode: {:?}", mode);
 
-    // === STEP 3: Fire chime if mode requires it ===
-    if mode.should_ring_chime() {
-        doorbell::execute_mode(mode, relay_pin).await;
-    }
-    let chime_ms = embassy_time::Instant::now().duration_since(wake_start).as_millis();
-
-    // === STEP 4: Publish timing debug with chime_ms ===
-    let total_mqtt_ms = embassy_time::Instant::now().duration_since(mqtt_start).as_millis();
-
-    let mut timing_payload: heapless::String<256> = heapless::String::new();
+    // Update device shadow with battery level
+    let mut shadow_payload: heapless::String<128> = heapless::String::new();
     let _ = core::fmt::Write::write_fmt(
-        &mut timing_payload,
+        &mut shadow_payload,
         format_args!(
-            r#"{{"tls_ms":{},"ring_ms":{},"chime_ms":{},"config_ms":{},"total_ms":{},"battery_mv":{}}}"#,
-            tls_ms, ring_ms, chime_ms, config_ms, total_mqtt_ms, battery_mv
+            r#"{{"state":{{"reported":{{"battery_mv":{}}}}}}}"#,
+            battery_mv
         ),
     );
-    let timing_topic = TopicName::new(MqttString::try_from("doorbell/debug").unwrap()).unwrap();
-    let timing_pub_options = PublicationOptions::new(TopicReference::Name(timing_topic));
+    let shadow_topic = TopicName::new(MqttString::try_from("$aws/things/doorbell/shadow/update").unwrap()).unwrap();
+    let pub_options = PublicationOptions::new(TopicReference::Name(shadow_topic));
     let _ = client
-        .publish(&timing_pub_options, rust_mqtt::Bytes::from(timing_payload.as_bytes()))
+        .publish(&pub_options, rust_mqtt::Bytes::from(shadow_payload.as_bytes()))
+        .await;
+    info!("[mqtt] Shadow updated (battery_mv: {})", battery_mv);
+
+    // Publish debug info
+    let total_ms = embassy_time::Instant::now().duration_since(mqtt_start).as_millis();
+    let mut debug_payload: heapless::String<128> = heapless::String::new();
+    let _ = core::fmt::Write::write_fmt(
+        &mut debug_payload,
+        format_args!(
+            r#"{{"battery_mv":{},"total_ms":{}}}"#,
+            battery_mv, total_ms
+        ),
+    );
+    let debug_topic = TopicName::new(MqttString::try_from("doorbell/debug").unwrap()).unwrap();
+    let debug_pub_options = PublicationOptions::new(TopicReference::Name(debug_topic));
+    let _ = client
+        .publish(&debug_pub_options, rust_mqtt::Bytes::from(debug_payload.as_bytes()))
         .await;
 
-    info!("[mqtt] Workflow complete ({}ms)", total_mqtt_ms);
+    info!("[mqtt] Workflow complete ({}ms)", total_ms);
 
     // Close TLS session
     let _ = session.close().await;
 
-    Ok(())
+    Ok(mode)
 }

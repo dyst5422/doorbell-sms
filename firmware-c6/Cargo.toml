@@ -1,0 +1,23 @@
+[package]
+name = "doorbell-zigbee"
+version = "0.1.0"
+authors = ["Dylan Stewart <jdylanstewart@gmail.com>"]
+edition = "2021"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+esp-idf-sys = "0.37"
+esp-idf-hal = "0.46"
+esp-idf-svc = "0.52"
+log = "0.4"
+
+[build-dependencies]
+embuild = "0.33"
+
+[profile.release]
+opt-level = "s"
+lto = true
+
+[profile.dev]
+opt-level = "s"
+lto = true

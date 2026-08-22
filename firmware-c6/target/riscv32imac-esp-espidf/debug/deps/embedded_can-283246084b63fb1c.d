@@ -1,0 +1,10 @@
+/Users/jdylanstewart/gitRepos/doorbell-sms/firmware-c6/target/riscv32imac-esp-espidf/debug/deps/embedded_can-283246084b63fb1c.d: /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/lib.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/blocking.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/nb.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/id.rs
+
+/Users/jdylanstewart/gitRepos/doorbell-sms/firmware-c6/target/riscv32imac-esp-espidf/debug/deps/libembedded_can-283246084b63fb1c.rlib: /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/lib.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/blocking.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/nb.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/id.rs
+
+/Users/jdylanstewart/gitRepos/doorbell-sms/firmware-c6/target/riscv32imac-esp-espidf/debug/deps/libembedded_can-283246084b63fb1c.rmeta: /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/lib.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/blocking.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/nb.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/id.rs
+
+/Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/lib.rs:
+/Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/blocking.rs:
+/Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/nb.rs:
+/Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/embedded-can-0.4.1/src/id.rs:

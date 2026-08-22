@@ -1,0 +1,10 @@
+/Users/jdylanstewart/gitRepos/doorbell-sms/firmware-c6/target/riscv32imac-esp-espidf/debug/deps/uncased-1588435a5d9c55f7.d: /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/lib.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/owned.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/borrowed.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/as_uncased.rs
+
+/Users/jdylanstewart/gitRepos/doorbell-sms/firmware-c6/target/riscv32imac-esp-espidf/debug/deps/libuncased-1588435a5d9c55f7.rlib: /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/lib.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/owned.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/borrowed.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/as_uncased.rs
+
+/Users/jdylanstewart/gitRepos/doorbell-sms/firmware-c6/target/riscv32imac-esp-espidf/debug/deps/libuncased-1588435a5d9c55f7.rmeta: /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/lib.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/owned.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/borrowed.rs /Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/as_uncased.rs
+
+/Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/lib.rs:
+/Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/owned.rs:
+/Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/borrowed.rs:
+/Users/jdylanstewart/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/uncased-0.9.10/src/as_uncased.rs:

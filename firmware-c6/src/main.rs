@@ -84,6 +84,28 @@ fn main() {
 
     info!("Zigbee started, entering main loop...");
 
+    // Enable Zigbee light sleep for low power
+    // The device will automatically sleep between poll intervals (keep_alive = 60s)
+    unsafe {
+        // Enable power management with light sleep
+        let pm_config = esp_idf_sys::esp_pm_config_t {
+            max_freq_mhz: 160,
+            min_freq_mhz: 10,
+            light_sleep_enable: true,
+        };
+        let ret = esp_idf_sys::esp_pm_configure(&pm_config as *const _ as *const core::ffi::c_void);
+        if ret == esp_idf_sys::ESP_OK as i32 {
+            info!("Power management configured (light sleep enabled)");
+        } else {
+            info!("Power management config failed: {}", ret);
+        }
+
+        // Enable Zigbee sleep
+        esp_zb_sleep_enable(true);
+        esp_zb_sleep_set_threshold(50); // Sleep if idle > 50ms
+        info!("Zigbee sleep enabled (threshold: 50ms)");
+    }
+
     // Main loop - process Zigbee events
     loop {
         unsafe {

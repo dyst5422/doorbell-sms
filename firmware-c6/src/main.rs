@@ -24,7 +24,7 @@ fn main() {
     let mut ant_select = PinDriver::output(peripherals.pins.gpio14).unwrap();
     ant_enable.set_low().unwrap();
     thread::sleep(Duration::from_millis(100));
-    ant_select.set_high().unwrap();
+    ant_select.set_high().unwrap(); // HIGH = external antenna
     info!("External antenna enabled");
 
     // Configure relay pins as outputs
@@ -138,4 +138,12 @@ unsafe extern "C" fn zb_action_handler(
 pub unsafe extern "C" fn esp_zb_app_signal_handler(signal_s: *mut esp_zb_app_signal_s) {
     let sig_type = *((*signal_s).p_app_signal);
     info!("Zigbee signal: type={}", sig_type);
+
+    // Signal type 23 = BDB_INIT_DONE (ESP_ZB_ZDO_SIGNAL_SKIP_STARTUP triggers this flow)
+    // After init, start network steering (commissioning) to join a network
+    if sig_type == 23 {
+        // BDB initialization done - start commissioning (network steering)
+        info!("BDB init done, starting network steering...");
+        esp_zb_bdb_start_top_level_commissioning(0x02); // ESP_ZB_BDB_MODE_NETWORK_STEERING
+    }
 }

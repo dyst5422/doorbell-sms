@@ -1,1 +1,0 @@
-/Users/jdylanstewart/.espressif/esp-idf/v5.2.2/components/mbedtls/mbedtls/library/error.c

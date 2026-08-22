@@ -35,10 +35,17 @@ fn main() {
         esp_idf_sys::gpio_set_level(GPIO_RELAY_RESET as esp_idf_sys::gpio_num_t, 0);
     }
 
+    // Initialize NVS (required for PHY calibration and Zigbee storage)
+    unsafe {
+        esp_idf_sys::nvs_flash_init();
+    }
+
     // Initialize Zigbee
     info!("Initializing Zigbee...");
     unsafe {
         let mut zb_cfg: esp_zb_cfg_s = core::mem::zeroed();
+        zb_cfg.esp_zb_role = esp_zb_nwk_device_type_t_ESP_ZB_DEVICE_TYPE_ED;
+        zb_cfg.install_code_policy = false;
         zb_cfg.nwk_cfg.zed_cfg.ed_timeout = 10; // ESP_ZB_ED_AGING_TIMEOUT_64MIN
         zb_cfg.nwk_cfg.zed_cfg.keep_alive = 60000; // 60 second poll interval
 

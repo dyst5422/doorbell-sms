@@ -21,3 +21,14 @@ lto = true
 [profile.dev]
 opt-level = "s"
 lto = true
+
+[package.metadata.esp-idf-sys]
+esp_idf_component_manager = "y"
+
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/esp-zboss-lib", version = "~1.6.0" }
+
+[[package.metadata.esp-idf-sys.extra_components]]
+remote_component = { name = "espressif/esp-zigbee-lib", version = "~1.6.0" }
+bindings_header = "src/zigbee_bindings.h"
+bindings_module = "zigbee"

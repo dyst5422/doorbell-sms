@@ -24,6 +24,7 @@ lto = true
 
 [package.metadata.esp-idf-sys]
 esp_idf_component_manager = "y"
+esp_idf_partition_table_file = "partitions.csv"
 
 [[package.metadata.esp-idf-sys.extra_components]]
 remote_component = { name = "espressif/esp-zboss-lib", version = "~1.6.0" }
